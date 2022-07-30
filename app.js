@@ -3,6 +3,8 @@ const db = require('./db');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const session = require('express-session');
+const { config } = require('dotenv');
+config({ path: __dirname + '/.env' })
 const app = express();
 app.set('view-engine', 'ejs');
 app.use(express.urlencoded({ extended: false }))
@@ -14,12 +16,10 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 passport.serializeUser((user, done) => {
-  done (null, user.id);
+  done (null, user);
 })
-passport.deserializeUser((id, done) => {
-  const user = db.findById(id);
-  if (!user) return done(false, null);
-  done(null, user);
+passport.deserializeUser((obj, done) => {
+  done(null, obj);
 })
 passport.use(new LocalStrategy((username, password, done) => {
   const user = db.findByUsername(username);
@@ -40,37 +40,30 @@ app.get('/', (req, res) => {
 })
 // GOOGLE AUTH
 const GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
-let userProfile;
 passport.use(new GoogleStrategy({
-  clientID: "939204257180-nk2al9e2hcb63jd697lioemq6jlmiip3.apps.googleusercontent.com",
-  clientSecret: "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",
-  callbackURL: 'http://localhost:3000/auth/google/callback'
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: process.env.GOOGLE_CALLBACK_URL
 },
 function (accessToken, refreshToken, profile, done) {
-  userProfile = profile;
-  console.log(profile)
-  return done(null, userProfile);
+  return done(null, profile);
 }
 ))
 app.get('/auth/google', passport.authenticate('google', { scope: [ 'profile', 'email' ] }));
 app.get('/auth/google/callback', passport.authenticate('google', 
-{ failureRedirect: '/error' }
-), (req, res) => {
-  res.redirect('/google-success');
-})
+{ failureRedirect: '/error', successRedirect: '/google-success'}
+))
 app.get('/google-success', (req, res) => {
-  res.render('./google.success.ejs', { user: userProfile })
+  res.render('./google.success.ejs', { user: req.user })
 })
 // FACEBOOK AUTH
 const FacebookStrategy = require('passport-facebook');
 passport.use(new FacebookStrategy({
-  clientID: '595018182016484',
-  clientSecret: '4039e69494610d1cbbdcd99fa552cc1c',
-  callbackURL: 'http://localhost:3000/auth/facebook/callback'
+  clientID: process.env.FACEBOOK_CLIENT_ID,
+  clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+  callbackURL: process.env.FACEBOOK_CALLBACK_URL
 },
 function (accessToken, refreshToken, profile, done) {
-  userProfile = profile;
-  userProfile.photo = `https://graph.facebook.com/${profile.id}/picture?width=200&height=200`;
   return done(null, profile);
 }))
 app.get('/auth/facebook', passport.authenticate('facebook', {
@@ -81,7 +74,10 @@ app.get('/auth/facebook/callback', passport.authenticate('facebook', {
   failureRedirect: '/error'
 }))
 app.get('/facebook-success', (req, res) => {
-  res.render('./facebook.success.ejs', { user: userProfile })
+  if (req.user) {
+    req.user.photo = `https://graph.facebook.com/${req.user.id}/picture?width=200&height=200`;
+  }
+  res.render('./facebook.success.ejs', { user: req.user })
 })
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
